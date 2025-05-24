@@ -165,32 +165,44 @@ legend("bottomright", legend = c(
 
 ### QUESTION 6
 # Fonction pour calculer l'erreur de classification
-get_error <- function(model, data, true_class) {
+get_error = function(model, data, true_class) {
   if (inherits(model, "glm")) {
-    pred <- predict(model, newdata = data, type = "response") > 0.5
-  } else if (inherits(model, "svm")) {
-    pred <- predict(model, newdata = data)
+    # For logistic regression models
+    pred_prob = predict(model, newdata = data, type = "response")
+    pred = ifelse(pred_prob > 0.5, "Kecimen", "Besni")
   } else if (inherits(model, "glmnet")) {
-    pred <- predict(model, newx = as.matrix(data[,1:7]), type = "response") > 0.5
+    # For Lasso (glmnet) models
+    feature_data = as.matrix(data[, 1:7])  # Select only feature columns
+    pred_prob = predict(model, newx = feature_data, type = "response")[, 1]
+    pred = ifelse(pred_prob > 0.5, "Kecimen", "Besni")
+  } else if (inherits(model, "svm")) {
+    # For SVM models
+    pred = predict(model, newdata = data)
+    pred = as.character(pred)
+  } else {
+    stop("Unsupported model type")
   }
-  return(mean(pred != true_class))
+  # Compute error by comparing as character vectors
+  mean(pred != as.character(true_class))
 }
 
+
 # Erreurs sur l'échantillon d'apprentissage
-error_complet_train <- get_error(model_complet, raisin[train, ], raisin[train, "Class"])
-error_pca_train <- get_error(model_pca, data.frame(raisin_train_pca, Class = raisin[train, "Class"]), raisin[train, "Class"])
-error_aic_train <- get_error(model_aic, raisin[train, ], raisin[train, "Class"])
-error_lasso_train <- get_error(model_lasso, raisin[train, ], raisin[train, "Class"])
+error_complet_train <- get_error(model_complet, raisin[train, ], raisin$Class[train])
+error_pca_train <- get_error(model_pca, data.frame(raisin_train_pca, Class = raisin$Class[train]), raisin$Class[train])
+error_aic_train <- get_error(model_aic, raisin[train, ], raisin$Class[train])
+error_lasso_train <- get_error(model_lasso, raisin[train, ], raisin$Class[train])  # Corrected from get_error_lasso
 error_svm_linear_train <- get_error(model_svm_linear, raisin[train, ], raisin$Class[train])
 error_svm_poly_train <- get_error(model_svm_poly, raisin[train, ], raisin$Class[train])
 
 # Erreurs sur l'échantillon de test
-error_complet_test <- get_error(model_complet, raisin[test, ], raisin[test, "Class"])
-error_pca_test <- get_error(model_pca, data.frame(raisin_test_proj$coord[,1:2], Class = raisin[test, "Class"]), raisin[test, "Class"])
-error_aic_test <- get_error(model_aic, raisin[test, ], raisin[test, "Class"])
-error_lasso_test <- get_error(model_lasso, raisin[test, ], raisin[test, "Class"])
+error_complet_test <- get_error(model_complet, raisin[test, ], raisin$Class[test])
+error_pca_test <- get_error(model_pca, data.frame(raisin_test_proj$coord[,1:2], Class = raisin$Class[test]), raisin$Class[test])
+error_aic_test <- get_error(model_aic, raisin[test, ], raisin$Class[test])
+error_lasso_test <- get_error(model_lasso, raisin[test, ], raisin$Class[test])
 error_svm_linear_test <- get_error(model_svm_linear, raisin[test, ], raisin$Class[test])
 error_svm_poly_test <- get_error(model_svm_poly, raisin[test, ], raisin$Class[test])
+
 
 # Afficher les erreurs
 cat("Erreur sur l'échantillon d'apprentissage:\n")
