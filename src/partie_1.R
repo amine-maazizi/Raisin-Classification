@@ -1,214 +1,236 @@
-# Clear workspace and close graphics
+# Effacer l'espace de travail et fermer les graphiques
 rm(list = objects())
 graphics.off()
 
-# Create necessary directories if they don't exist
+# Créer les répertoires nécessaires s'ils n'existent pas
 dir.create("plots/partie_1", recursive = TRUE, showWarnings = FALSE)
 dir.create("plots/partie_1/analyse_uni_et_bi_variee", showWarnings = FALSE)
 dir.create("plots/partie_1/ACP", showWarnings = FALSE)
 dir.create("plots/partie_1/CAH", showWarnings = FALSE)
 dir.create("plots/partie_1/CAH_sur_k_premieres_composantes", showWarnings = FALSE)
 
-# Chargement des données
+# Charger les packages nécessaires
 library(openxlsx)
-data <- read.xlsx("dataset/Raisin.xlsx", sheet = 1)
-
-n = nrow(data)
-p = ncol(data)
-
-colSums(is.na(data))
-
-# Vérification des valeurs revendiquées par l'article
-morph_vars <- c("Area", "Perimeter", "MajorAxisLength", "MinorAxisLength", 
-                "Eccentricity", "ConvexArea", "Extent")
-
-# Calcul des statistiques descriptives avec sapply
-stats <- data.frame(
-  Variable = morph_vars,
-  Minimum = sapply(morph_vars, function(var) min(data[[var]], na.rm = TRUE)),
-  Maximum = sapply(morph_vars, function(var) max(data[[var]], na.rm = TRUE)),
-  Moyenne = sapply(morph_vars, function(var) mean(data[[var]], na.rm = TRUE))
-)
-
-# Affichage des résultats avec formatage
-cat("Statistiques descriptives des variables morphologiques :\n")
-stats[, c("Minimum", "Maximum", "Moyenne")] <- round(stats[, c("Minimum", "Maximum", "Moyenne")], 3)
-print(stats)  
-cat("\n")
-
 library(ggplot2)
 library(reshape2)
 library(corrplot)
-library(car)
 library(GGally)
-
-# Analyse univariée et bivariée
-# Boxplots facettés
-data_mod <- melt(data, id.vars="Class", measure.vars=1:(p-1))
-p0 <- ggplot(data_mod, aes(x = as.factor(Class), y = value, fill = as.factor(Class))) +
-  geom_boxplot() +
-  facet_wrap(~variable, scales = "free_y") +  # Échelle libre pour l'axe y
-  xlab("Classe") + ylab("Valeur") +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-  labs(fill = "Classe") +  # Légende pour les couleurs
-  theme(legend.position = "top")  # Position de la légende
-p0
-ggsave("plots/partie_1/analyse_uni_et_bi_variee/boxplot_all_faceted_by_class.png", plot = p0)
-
-# Corrélation
-round(cor(data[,-p]), 2)
-
-# Corrplot
-png("plots/partie_1/analyse_uni_et_bi_variee/corrplot.png")
-corrplot(cor(data[,-p]), method="circle")
-dev.off()
-
-# GGpairs avec Class
-p1 <- ggpairs(data, ggplot2::aes(colour=as.factor(Class)))
-ggsave("plots/partie_1/analyse_uni_et_bi_variee/ggpairs_class.png", plot = p1)
-
-
-# ACP
 library(FactoMineR)
 library(cowplot)
 library(factoextra)
-
-class_vector <- data$Class      
-res <- PCA(data[, -p], scale.unit = TRUE, graph = FALSE)
-
-# a - Valeurs et vecteurs propres
-round(res$eig, 4)
-sum(res$eig[,1])
-
-p1 <- fviz_eig(res, addlabels = TRUE, main = "Éboulis des valeurs propres") +
-  geom_hline(yintercept = 100/p)
-ggsave("plots/partie_1/ACP/scree_plot.jpg", plot = p1)
-
-
-# Create ggplot-based correlation circle plots
-p2 <- fviz_pca_var(res, axes = c(1, 2), repel = TRUE)
-p3 <- fviz_pca_var(res, axes = c(2, 3), repel = TRUE)
-
-# Save them using ggsave
-ggsave("plots/partie_1/ACP/cor_circle_1_2.jpg", plot = p2)
-ggsave("plots/partie_1/ACP/cor_circle_2_3.jpg", plot = p3)
-
-# Plan 1-2 : individus colorés par classe et variables
-p_ind_1_2 <- fviz_pca_ind(res, 
-                          habillage = as.factor(class_vector), 
-                          addEllipses = TRUE, 
-                          label = "none", 
-                          repel = TRUE)
-
-
-ggsave("plots/partie_1/ACP/ind_plan1_2.jpg", plot = p_ind_1_2, width = 12, height = 6)
-
-
-# Plan 2-3 : même chose avec axes 2 et 3
-p_ind_2_3 <- fviz_pca_ind(res, 
-                          habillage = as.factor(class_vector), 
-                          axes = c(2, 3), 
-                          addEllipses = TRUE, 
-                          label = "none", 
-                          repel = TRUE)
-
-
-ggsave("plots/partie_1/ACP/ind_plan_2_3.jpg", plot = p_ind_2_3, width = 12, height = 6)
-
-
-
-# CAH
 library(cluster)
 library(mclust)
-library(ggplot2)
-library(ggdendro)
 
-# Données
-data_quant <- data[,-p]
-variety <- as.factor(data$Class)
+# Charger les données
+donnees <- read.xlsx("dataset/Raisin.xlsx", sheet = 1)
 
-# CAH avec méthode de Ward
-res_cah <- hclust(dist(data_quant), method = "ward.D2")
+# Dimensions des données
+n <- nrow(donnees)  # Nombre d'observations
+p <- ncol(donnees)  # Nombre de variables
 
-# Récupération des sauts d'inertie (delta_t = hauteur des fusions)
-delta_t <- diff(res_cah$height)
+# Vérifier les valeurs manquantes
+colSums(is.na(donnees))
 
-# Tracé du diagramme en bâtons inversé des sauts d'inertie
-df_delta <- data.frame(etape = 1:length(delta_t), delta = rev(delta_t))
+# Renommer les colonnes en français
+colnames(donnees) <- c("Surface", "Périmètre", "LongueurAxeMajeur", "LongueurAxeMineur", 
+                       "Excentricité", "SurfaceConvexe", "Étendue", "Classe")
 
-gg_delta <- ggplot(df_delta, aes(x = etape, y = delta)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  labs(title = "Diagramme des sauts d'inertie (méthode du coude)",
-       x = "Étapes de fusion (du dernier au premier)", y = expression(delta[t])) +
-  theme_minimal()
+# Liste des variables morphologiques
+variables_morph <- c("Surface", "Périmètre", "LongueurAxeMajeur", "LongueurAxeMineur", 
+                     "Excentricité", "SurfaceConvexe", "Étendue")
 
-ggsave("plots/partie_1/CAH/diagramme_sauts_inertie.jpg", gg_delta,
-       width = 8, height = 5, dpi = 300)
+# ========================================
+# ANALYSE DES DONNÉES (UNIVARIÉE ET BIVARIÉE)
+# ========================================
+# Statistiques descriptives
+stats <- data.frame(
+  Variable = variables_morph,
+  Minimum = sapply(variables_morph, function(var) min(donnees[[var]], na.rm = TRUE)),
+  Maximum = sapply(variables_morph, function(var) max(donnees[[var]], na.rm = TRUE)),
+  Moyenne = sapply(variables_morph, function(var) mean(donnees[[var]], na.rm = TRUE))
+)
+cat("Statistiques descriptives des variables morphologiques :\n")
+stats[, c("Minimum", "Maximum", "Moyenne")] <- round(stats[, c("Minimum", "Maximum", "Moyenne")], 3)
+print(stats)
+cat("\n")
 
-print(gg_delta)
+# Boxplots facettés par classe
+donnees_mod <- melt(donnees, id.vars = "Classe", measure.vars = 1:(p - 1))
+p0 <- ggplot(donnees_mod, aes(x = as.factor(Classe), y = value, fill = as.factor(Classe))) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free_y") +
+  xlab("Classe") + ylab("Valeur") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  labs(fill = "Classe") +
+  theme(legend.position = "top")
+ggsave("plots/partie_1/analyse_uni_et_bi_variee/boxplot_toutes_variables_par_classe.png", plot = p0)
 
-# Optionnel : Affichage du dendrogramme (Ward)
-dendro_data <- dendro_data(res_cah)
-gg_dendro <- ggplot() +
-  geom_segment(data = dendro_data$segments, 
-               aes(x = x, y = y, xend = xend, yend = yend)) +
-  theme_minimal() +
-  labs(title = "Dendrogramme CAH (méthode Ward)", x = "", y = "Distance")
-ggsave("plots/partie_1/CAH/dendrogramme_ward.jpg", gg_dendro,
-       width = 10, height = 6, dpi = 300)
-print(gg_dendro)
+# Matrice de corrélation
+round(cor(donnees[, -p]), 2)
 
-sil <- silhouette(cutree(res_cah, k = 2), dist(data_quant))
-p_sil <- fviz_silhouette(sil, print.summary = FALSE)
-ggsave("plots/partie_1/CAH/silhouette_k2_complete.jpg", plot = p_sil)
-sil_mean <- mean(sil[,3])
-cat("Indice de silhouette moyen (k=2) :", sil_mean, "\n")
+# Visualisation avec corrplot
+png("plots/partie_1/analyse_uni_et_bi_variee/corrplot.png")
+corrplot(cor(donnees[, -p]), method = "circle")
+dev.off()
 
-grp_k2 <- cutree(res_cah, k = 2)
-conf_matrix <- table(variety, grp_k2)
-error_rate <- 1 - sum(diag(conf_matrix)) / sum(conf_matrix)
-cat("Erreur de classification (k=2) :", error_rate, "\n")
+# Scatter plots bivariés avec GGpairs
+p1 <- ggpairs(donnees, ggplot2::aes(colour = as.factor(Classe)))
+ggsave("plots/partie_1/analyse_uni_et_bi_variee/ggpairs_par_classe.png", plot = p1)
 
-data_quant_scaled <- scale(data_quant)
-res_cah_scaled <- hclust(dist(data_quant_scaled), method = "complete")
+# ========================================
+# ANALYSE EN COMPOSANTES PRINCIPALES (ACP)
+# ========================================
+vecteur_classes <- donnees$Classe
+res_acp <- PCA(donnees[, -p], scale.unit = TRUE, graph = FALSE, ncp = 7)
 
-sil_scaled <- silhouette(cutree(res_cah_scaled, k = 2), dist(data_quant_scaled))
-p_sil_scaled <- fviz_silhouette(sil_scaled, print.summary = FALSE)
-ggsave("plots/partie_1/CAH/silhouette_k2_scaled.jpg", plot = p_sil_scaled)
-sil_mean_scaled <- mean(sil_scaled[,3])
-cat("Indice de silhouette moyen (k=2, normalisé) :", sil_mean_scaled, "\n")
+# Éboulis des valeurs propres
+p1 <- fviz_eig(res_acp, addlabels = TRUE, main = "Éboulis des valeurs propres") +
+  geom_hline(yintercept = 100 / p)
+ggsave("plots/partie_1/ACP/eboulis_valeurs_propres.jpg", plot = p1)
 
-grp_k2_scaled <- cutree(res_cah_scaled, k = 2)
-conf_matrix_scaled <- table(variety, grp_k2_scaled)
-error_rate_scaled <- 1 - sum(diag(conf_matrix_scaled)) / sum(conf_matrix_scaled)
-cat("Erreur de classification (k=2, normalisé) :", error_rate_scaled, "\n")
+# Cercles de corrélation pour les plans 1-2 et 2-3
+p2 <- fviz_pca_var(res_acp, axes = c(1, 2), repel = TRUE)
+p3 <- fviz_pca_var(res_acp, axes = c(2, 3), repel = TRUE)
+ggsave("plots/partie_1/ACP/cercle_correlation_1_2.jpg", plot = p2)
+ggsave("plots/partie_1/ACP/cercle_correlation_2_3.jpg", plot = p3)
 
+# Projection des individus sur les plans 1-2 et 2-3
+p_ind_1_2 <- fviz_pca_ind(res_acp,
+                          habillage = as.factor(vecteur_classes),
+                          addEllipses = TRUE,
+                          label = "none",
+                          repel = TRUE
+)
+ggsave("plots/partie_1/ACP/projection_individus_plan1_2.jpg", plot = p_ind_1_2, width = 12, height = 6)
 
-# CAH sur les k premières composantes pour classification
-PC_scores <- res$ind$coord
-variety <- as.factor(data$Class)[rownames(PC_scores)]
+p_ind_2_3 <- fviz_pca_ind(res_acp,
+                          habillage = as.factor(vecteur_classes),
+                          axes = c(2, 3),
+                          addEllipses = TRUE,
+                          label = "none",
+                          repel = TRUE
+)
+ggsave("plots/partie_1/ACP/projection_individus_plan_2_3.jpg", plot = p_ind_2_3, width = 12, height = 6)
 
-evaluate_error <- function(k) {
-  data_k <- PC_scores[, 1:k]
-  dist_k <- dist(data_k)
-  cah_k <- hclust(dist_k, method = "complete")
-  groupes_k <- cutree(cah_k, k = 2)
-  error <- 1 - sum(diag(table(variety, groupes_k))) / length(variety)
-  return(error)
+# ========================================
+# CLASSIFICATION ASCENDANTE HIÉRARCHIQUE (CAH)
+# ========================================
+# Données standardisées
+donnees_standardisees <- scale(donnees[, -p])
+dist_standardisees <- dist(donnees_standardisees, method = "euclidean")
+cah_standardisees <- hclust(dist_standardisees, method = "ward.D2")
+
+# Dendrogramme standardisé
+png("plots/partie_1/CAH/dendrogramme_standardise.png", width = 800, height = 600)
+plot(cah_standardisees, main = "CAH avec standardisation", labels = FALSE)
+rect.hclust(cah_standardisees, k = 2, border = "blue")
+dev.off()
+
+# Hauteur des fusions
+png("plots/partie_1/CAH/hauteurs_fusions.png", width = 800, height = 600)
+plot(rev(cah_standardisees$height), type = "b", pch = 19,
+     xlab = "Fusion (ordre inverse)", ylab = "Hauteur",
+     main = "Hauteur des fusions (Ward)"
+)
+dev.off()
+
+# Choix du nombre optimal de clusters
+png("plots/partie_1/CAH/silhouette_nb_clusters.png", width = 800, height = 600)
+fviz_nbclust(donnees_standardisees, FUN = hcut, method = "silhouette") +
+  ggtitle("Nombre optimal de clusters - Méthode silhouette (Ward)")
+dev.off()
+
+# Silhouette pour k = 2
+grp_standardisees <- cutree(cah_standardisees, k = 2)
+sil_standardisees <- silhouette(grp_standardisees, dist_standardisees)
+p_sil_standardisees <- fviz_silhouette(sil_standardisees, print.summary = FALSE)
+ggsave("plots/partie_1/CAH/silhouette_k2_standardise.jpg", plot = p_sil_standardisees)
+
+sil_moyenne_standardisees <- mean(sil_standardisees[, 3])
+cat("Indice de silhouette moyen (k=2, standardisé) :", round(sil_moyenne_standardisees, 3), "\n")
+
+# ARI et matrice de confusion
+ari_standardisees <- adjustedRandIndex(grp_standardisees, donnees$Classe)
+cat("ARI avec standardisation :", round(ari_standardisees, 3), "\n")
+
+conf_matrix_standardisees <- table(donnees$Classe, grp_standardisees)
+taux_erreur_standardisees <- 1 - sum(diag(conf_matrix_standardisees)) / sum(conf_matrix_standardisees)
+cat("Taux d'erreur de classification (k=2, standardisé) :", round(taux_erreur_standardisees, 3), "\n")
+
+# Données brutes (non standardisées)
+donnees_brutes <- donnees[, -p]
+dist_brutes <- dist(donnees_brutes, method = "euclidean")
+cah_brutes <- hclust(dist_brutes, method = "ward.D2")
+
+# Dendrogramme brut
+png("plots/partie_1/CAH/dendrogramme_brut.png", width = 800, height = 600)
+plot(cah_brutes, main = "CAH sans standardisation", labels = FALSE)
+rect.hclust(cah_brutes, k = 2, border = "red")
+dev.off()
+
+# Silhouette pour k = 2
+grp_brutes <- cutree(cah_brutes, k = 2)
+sil_brutes <- silhouette(grp_brutes, dist_brutes)
+p_sil_brutes <- fviz_silhouette(sil_brutes, print.summary = FALSE)
+ggsave("plots/partie_1/CAH/silhouette_k2_brut.jpg", plot = p_sil_brutes)
+
+sil_moyenne_brutes <- mean(sil_brutes[, 3])
+cat("Indice de silhouette moyen (k=2, brut) :", round(sil_moyenne_brutes, 3), "\n")
+
+# ARI et matrice de confusion
+ari_brutes <- adjustedRandIndex(grp_brutes, donnees$Classe)
+cat("ARI sans standardisation :", round(ari_brutes, 3), "\n")
+
+conf_matrix_brutes <- table(donnees$Classe, grp_brutes)
+taux_erreur_brutes <- 1 - sum(diag(conf_matrix_brutes)) / sum(conf_matrix_brutes)
+cat("Taux d'erreur de classification (k=2, brut) :", round(taux_erreur_brutes, 3), "\n")
+
+# ========================================
+# CAH SUR LES COMPOSANTES PRINCIPALES
+# ========================================
+compute_cah_metrics <- function(k) {
+  pc_k <- res_acp$ind$coord[, 1:k]
+  dist_k <- dist(pc_k)
+  cah_k <- hclust(dist_k, method = "ward.D2")
+  grp_k <- cutree(cah_k, k = 2)
+  
+  # Matrice de confusion
+  conf_mat <- table(donnees$Classe, grp_k)
+  erreur <- 1 - sum(diag(conf_mat)) / sum(conf_mat)
+  ari <- adjustedRandIndex(grp_k, donnees$Classe)
+  
+  # Sauvegarde du dendrogramme
+  png(paste0("plots/partie_1/CAH_sur_k_premieres_composantes/dendro_k", k, ".png"))
+  plot(cah_k, main = paste("Dendrogramme sur", k, "composantes principales"), labels = FALSE)
+  rect.hclust(cah_k, k = 2, border = "darkgreen")
+  dev.off()
+  
+  return(c(Taux_Erreur = erreur, ARI = ari))
 }
 
-error_rates <- sapply(1:5, evaluate_error)
+# Appliquer la fonction pour k = 1 à 7
+resultats_liste <- lapply(1:7, compute_cah_metrics)
 
-print(round(error_rates, 4))
+# Transformer la liste en data.frame
+resultats_mat <- do.call(rbind, resultats_liste)
+df_erreur <- data.frame(Nb_CP = 1:7, resultats_mat)
+df_erreur$Taux_Erreur <- round(df_erreur$Taux_Erreur, 4)
+df_erreur$ARI <- round(df_erreur$ARI, 4)
 
-plot(1:5, error_rates, type = "b", xlab = "Nombre d'axes PCA", ylab = "Erreur de classification",
-     main = "Erreur de classification selon le nb d'axes PCA utilisés")
+# Afficher le tableau
+print(df_erreur)
 
-best_k <- which.min(error_rates)
-cat("Meilleur nombre d'axes PCA =", best_k, "\n")
+# Sauvegarde graphique
+p_err <- ggplot(df_erreur, aes(x = Nb_CP)) +
+  geom_line(aes(y = Taux_Erreur), color = "red") +
+  geom_point(aes(y = Taux_Erreur), color = "red") +
+  ylab("Taux d'erreur de classification") +
+  xlab("Nombre de composantes principales") +
+  ggtitle("Taux d'erreur en fonction du nombre de CP")
+ggsave("plots/partie_1/CAH_sur_k_premieres_composantes/taux_erreur_par_k.png", plot = p_err)
 
-# Save this final plot
-png("plots/partie_1/CAH_sur_k_premieres_composantes/error_vs_k_axes.png")
-plot(1:5, error_rates, type = "b", xlab = "Nombre d'axes PCA", ylab = "Erreur de classification",
-     main = "Erreur de classification selon le nb d'axes PCA utilisés")
-dev.off()
+# Meilleur k
+meilleur_k <- which.min(df_erreur$Taux_Erreur)
+cat("Le nombre de composantes principales minimisant l'erreur est :", meilleur_k,
+    "avec un taux d'erreur de", df_erreur$Taux_Erreur[meilleur_k], "\n")
+cat("Indice ARI correspondant :", df_erreur$ARI[meilleur_k], "\n")
