@@ -162,63 +162,194 @@ legend("bottomright", legend = c(
 ), col = c("blue", "red", "green", "purple", "orange", "brown", "pink"), lty = 1)
 
 ### QUESTION 6
-# Fonction pour calculer l'erreur de classification
-get_error = function(model, data, true_class) {
+# Fonction pour calculer l'erreur de classification ET la précision (pour la classe "Kecimen")
+get_metrics = function(model, data, true_class) {
   if (inherits(model, "glm")) {
-    # For logistic regression models
+    # Logistic regression
     pred_prob = predict(model, newdata = data, type = "response")
     pred = ifelse(pred_prob > 0.5, "Kecimen", "Besni")
   } else if (inherits(model, "glmnet")) {
-    # For Lasso (glmnet) models
-    feature_data = as.matrix(data[, 1:7])  # Select only feature columns
+    # Lasso (glmnet)
+    feature_data = as.matrix(data[, 1:7])
     pred_prob = predict(model, newx = feature_data, type = "response")[, 1]
     pred = ifelse(pred_prob > 0.5, "Kecimen", "Besni")
   } else if (inherits(model, "svm")) {
-    # For SVM models
+    # SVM
     pred = predict(model, newdata = data)
     pred = as.character(pred)
   } else {
     stop("Unsupported model type")
   }
-  # Compute error by comparing as character vectors
-  mean(pred != as.character(true_class))
+  
+  true_class_chr = as.character(true_class)
+  error = mean(pred != true_class_chr)
+  
+  # Calcul précision pour la classe "Kecimen"
+  true_positive = sum(pred == "Kecimen" & true_class_chr == "Kecimen")
+  predicted_positive = sum(pred == "Kecimen")
+  precision = ifelse(predicted_positive > 0, true_positive / predicted_positive, NA)
+  
+  return(list(error = error, precision = precision))
 }
 
+# Calcul des erreurs et précisions sur l'échantillon d'apprentissage
+metrics_complet_train <- get_metrics(model_complet, raisin[train, ], raisin$Class[train])
+metrics_pca_train <- get_metrics(model_pca, data.frame(raisin_train_pca, Class = raisin$Class[train]), raisin$Class[train])
+metrics_aic_train <- get_metrics(model_aic, raisin[train, ], raisin$Class[train])
+metrics_lasso_train <- get_metrics(model_lasso, raisin[train, ], raisin$Class[train])
+metrics_svm_linear_train <- get_metrics(model_svm_linear, raisin[train, ], raisin$Class[train])
+metrics_svm_poly_train <- get_metrics(model_svm_poly, raisin[train, ], raisin$Class[train])
 
-# Erreurs sur l'échantillon d'apprentissage
-error_complet_train <- get_error(model_complet, raisin[train, ], raisin$Class[train])
-error_pca_train <- get_error(model_pca, data.frame(raisin_train_pca, Class = raisin$Class[train]), raisin$Class[train])
-error_aic_train <- get_error(model_aic, raisin[train, ], raisin$Class[train])
-error_lasso_train <- get_error(model_lasso, raisin[train, ], raisin$Class[train])  # Corrected from get_error_lasso
-error_svm_linear_train <- get_error(model_svm_linear, raisin[train, ], raisin$Class[train])
-error_svm_poly_train <- get_error(model_svm_poly, raisin[train, ], raisin$Class[train])
+# Calcul des erreurs et précisions sur l'échantillon de test
+metrics_complet_test <- get_metrics(model_complet, raisin[test, ], raisin$Class[test])
+metrics_pca_test <- get_metrics(model_pca, data.frame(raisin_test_proj$coord[,1:2], Class = raisin$Class[test]), raisin$Class[test])
+metrics_aic_test <- get_metrics(model_aic, raisin[test, ], raisin$Class[test])
+metrics_lasso_test <- get_metrics(model_lasso, raisin[test, ], raisin$Class[test])
+metrics_svm_linear_test <- get_metrics(model_svm_linear, raisin[test, ], raisin$Class[test])
+metrics_svm_poly_test <- get_metrics(model_svm_poly, raisin[test, ], raisin$Class[test])
 
-# Erreurs sur l'échantillon de test
-error_complet_test <- get_error(model_complet, raisin[test, ], raisin$Class[test])
-error_pca_test <- get_error(model_pca, data.frame(raisin_test_proj$coord[,1:2], Class = raisin$Class[test]), raisin$Class[test])
-error_aic_test <- get_error(model_aic, raisin[test, ], raisin$Class[test])
-error_lasso_test <- get_error(model_lasso, raisin[test, ], raisin$Class[test])
-error_svm_linear_test <- get_error(model_svm_linear, raisin[test, ], raisin$Class[test])
-error_svm_poly_test <- get_error(model_svm_poly, raisin[test, ], raisin$Class[test])
+# Affichage des résultats
+cat("Échantillon d'apprentissage :\n")
+cat(sprintf("Complet : erreur = %.4f, précision = %.4f\n", metrics_complet_train$error, metrics_complet_train$precision))
+cat(sprintf("PCA : erreur = %.4f, précision = %.4f\n", metrics_pca_train$error, metrics_pca_train$precision))
+cat(sprintf("AIC : erreur = %.4f, précision = %.4f\n", metrics_aic_train$error, metrics_aic_train$precision))
+cat(sprintf("Lasso : erreur = %.4f, précision = %.4f\n", metrics_lasso_train$error, metrics_lasso_train$precision))
+cat(sprintf("SVM linéaire : erreur = %.4f, précision = %.4f\n", metrics_svm_linear_train$error, metrics_svm_linear_train$precision))
+cat(sprintf("SVM polynomial : erreur = %.4f, précision = %.4f\n", metrics_svm_poly_train$error, metrics_svm_poly_train$precision))
 
+cat("\nÉchantillon de test :\n")
+cat(sprintf("Complet : erreur = %.4f, précision = %.4f\n", metrics_complet_test$error, metrics_complet_test$precision))
+cat(sprintf("PCA : erreur = %.4f, précision = %.4f\n", metrics_pca_test$error, metrics_pca_test$precision))
+cat(sprintf("AIC : erreur = %.4f, précision = %.4f\n", metrics_aic_test$error, metrics_aic_test$precision))
+cat(sprintf("Lasso : erreur = %.4f, précision = %.4f\n", metrics_lasso_test$error, metrics_lasso_test$precision))
+cat(sprintf("SVM linéaire : erreur = %.4f, précision = %.4f\n", metrics_svm_linear_test$error, metrics_svm_linear_test$precision))
+cat(sprintf("SVM polynomial : erreur = %.4f, précision = %.4f\n", metrics_svm_poly_test$error, metrics_svm_poly_test$precision))
 
-# Afficher les erreurs
-cat("Erreur sur l'échantillon d'apprentissage:\n")
-cat("Complet:", error_complet_train, "\n")
-cat("PCA:", error_pca_train, "\n")
-cat("AIC:", error_aic_train, "\n")
-cat("Lasso:", error_lasso_train, "\n")
-cat("SVM linéaire:", error_svm_linear_train, "\n")
-cat("SVM polynomial:", error_svm_poly_train, "\n")
+# ... Parite 3-2
+library(pROC)
 
-cat("\nErreur sur l'échantillon de test:\n")
-cat("Complet:", error_complet_test, "\n")
-cat("PCA:", error_pca_test, "\n")
-cat("AIC:", error_aic_test, "\n")
-cat("Lasso:", error_lasso_test, "\n")
-cat("SVM linéaire:", error_svm_linear_test, "\n")
-cat("SVM polynomial:", error_svm_poly_test, "\n")
+# Projection du jeu de test (déjà fait)
+Z_test <- raisin_test_proj$coord[,1:2]
+y_test <- raisin$Class[test]
 
+# Calcul du score LDA (score linéaire) à partir des coefficients a_hat et b_hat (partie 3-1-a)
+scores_lda <- as.numeric(Z_test %*% a_hat - b_hat)
 
+# Labels binaires (Besni = 1, Kecimen = 0)
+labels_bin_test <- ifelse(y_test == "Besni", 1, 0)
 
+# Calcul de la courbe ROC LDA
+roc_lda <- roc(labels_bin_test, scores_lda, direction = "<")
 
+# Tracer toutes les courbes ROC ensemble, y compris LDA
+png(filename = "plots/partie_3/ROC_superposee_tous_modeles.png", width = 800, height = 600)
+
+plot(roc_complet_test, col = "red", lwd = 2, main = "Courbes ROC des modèles sur jeu de test")
+lines(roc_pca_test, col = "green", lwd = 2)
+lines(roc_aic_test, col = "purple", lwd = 2)
+lines(roc_lasso_test, col = "orange", lwd = 2)
+lines(roc_svm_linear_test, col = "brown", lwd = 2)
+lines(roc_svm_poly_test, col = "pink", lwd = 2)
+lines(roc_lda, col = "darkcyan", lwd = 3, lty = 2)  # LDA en cyan et en tireté pour bien distinguer
+
+abline(a=0,b=1,lty=2,col="gray")  # Diagonale aléatoire
+
+legend("bottomright",
+       legend = c(
+         paste("Modèle complet (test), AUC =", round(auc(roc_complet_test), 2)),
+         paste("PCA (test), AUC =", round(auc(roc_pca_test), 2)),
+         paste("AIC (test), AUC =", round(auc(roc_aic_test), 2)),
+         paste("Lasso (test), AUC =", round(auc(roc_lasso_test), 2)),
+         paste("SVM linéaire (test), AUC =", round(auc(roc_svm_linear_test), 2)),
+         paste("SVM polynomial (test), AUC =", round(auc(roc_svm_poly_test), 2)),
+         paste("LDA (test), AUC =", round(auc(roc_lda), 2))
+       ),
+       col = c("red", "green", "purple", "orange", "brown", "pink", "darkcyan"),
+       lwd = c(2, 2, 2, 2, 2, 2, 3),
+       lty = c(1, 1, 1, 1, 1, 1, 2),
+       bty = "n")
+
+dev.off()
+
+R
+
+Copy
+# Load required libraries
+library(openxlsx)
+library(MASS)
+library(pROC)
+
+# Create directory for plots (if not already created)
+dir.create("plots/partie_3", showWarnings = FALSE)
+
+# Load the Raisin dataset
+raisin <- read.xlsx("dataset/Raisin.xlsx", sheet = 1)
+
+# Set seed for reproducibility
+set.seed(1)
+
+# Split data into training and test sets (2/3 training, 1/3 test)
+n <- nrow(raisin)
+train <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(2/3, 1/3))
+test <- !train
+X_train <- raisin[train, 1:7]  # All original variables
+y_train <- raisin$Class[train]
+X_test <- raisin[test, 1:7]
+y_test <- raisin$Class[test]
+
+# Standardize the explanatory variables
+X_train_scaled <- scale(X_train, center = TRUE, scale = TRUE)
+X_test_scaled <- scale(X_test, center = attr(X_train_scaled, "scaled:center"), 
+                       scale = attr(X_train_scaled, "scaled:scale"))
+
+# Fit LDA model on all original variables
+lda_full <- lda(X_train_scaled, grouping = y_train)
+
+# Predict on test set
+pred_lda_full <- predict(lda_full, newdata = X_test_scaled)
+
+# Compute LDA scores (posterior probabilities for Besni class)
+scores_lda_full <- pred_lda_full$posterior[, "Besni"]
+
+# Labels binaires (Besni = 1, Kecimen = 0)
+labels_bin_test <- ifelse(y_test == "Besni", 1, 0)
+
+# Calculate ROC curve for the new LDA model
+roc_lda_full <- roc(labels_bin_test, scores_lda_full, direction = "<")
+
+# Plot all ROC curves together, including PCA-based LDA and new LDA (full variables)
+png(filename = "plots/partie_3/ROC_superposee_tous_modeles_with_lda_full.png", width = 800, height = 600)
+
+plot(roc_complet_test, col = "red", lwd = 2, main = "Courbes ROC des modèles sur jeu de test")
+lines(roc_pca_test, col = "green", lwd = 2)
+lines(roc_aic_test, col = "purple", lwd = 2)
+lines(roc_lasso_test, col = "orange", lwd = 2)
+lines(roc_svm_linear_test, col = "brown", lwd = 2)
+lines(roc_svm_poly_test, col = "pink", lwd = 2)
+lines(roc_lda, col = "darkcyan", lwd = 3, lty = 2)  # PCA-based LDA
+lines(roc_lda_full, col = "blue", lwd = 3, lty = 3)  # New LDA (full variables)
+
+# Add random rule diagonal
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Update legend with AUC for all models
+legend("bottomright",
+       legend = c(
+         paste("Modèle complet (test), AUC =", round(auc(roc_complet_test), 2)),
+         paste("PCA (test), AUC =", round(auc(roc_pca_test), 2)),
+         paste("AIC (test), AUC =", round(auc(roc_aic_test), 2)),
+         paste("Lasso (test), AUC =", round(auc(roc_lasso_test), 2)),
+         paste("SVM linéaire (test), AUC =", round(auc(roc_svm_linear_test), 2)),
+         paste("SVM polynomial (test), AUC =", round(auc(roc_svm_poly_test), 2)),
+         paste("LDA (PCA, test), AUC =", round(auc(roc_lda), 2)),
+         paste("LDA (full, test), AUC =", round(auc(roc_lda_full), 2))
+       ),
+       col = c("red", "green", "purple", "orange", "brown", "pink", "darkcyan", "blue"),
+       lwd = c(2, 2, 2, 2, 2, 2, 3, 3),
+       lty = c(1, 1, 1, 1, 1, 1, 2, 3),
+       bty = "n")
+
+dev.off()
+
+# Print AUC for reference
+cat("AUC for LDA (full variables, test):", auc(roc_lda_full), "\n")

@@ -1,9 +1,11 @@
-library(readxl)
 library(FactoMineR)
 
+dir.create("plots/partie_3")
 
 
-raisin = read_excel("C:/Users/boufo/Documents/Raisin-Classification/dataset/Raisin.xlsx")
+# Chargement des données
+library(openxlsx)
+raisin <- read.xlsx("dataset/Raisin.xlsx", sheet = 1)
 
 set.seed(1)
 n <- nrow(raisin)
@@ -34,9 +36,26 @@ b_hat
 eig <- eigen(Sigma_hat)
 U <- eig$vectors
 D_inv <- diag(1/eig$values)
-a_hat_eig <- U %*% D_inv %*% t(U) %*% (mu1_hat - mu0_hat)
+Sigma_inv_eig <- U %*% D_inv %*% t(U)
+
+a_hat_eig <- Sigma_inv_eig %*% (mu1_hat - mu0_hat)
+b_hat_eig <- as.numeric(0.5 * (
+  t(mu1_hat) %*% Sigma_inv_eig %*% mu1_hat -
+    t(mu0_hat) %*% Sigma_inv_eig %*% mu0_hat
+))
 
 a_hat_eig
+b_hat_eig
+
+# Vérification de l'égalité
+if (all.equal(b_hat, b_hat_eig, tolerance = 1e-10) == TRUE) {
+  print("OK")
+} else {
+  print("Différence détectée")
+  print(c(b_hat = b_hat, b_hat_eig = b_hat_eig))
+}
+
+
 
 
 
@@ -69,5 +88,53 @@ error_rate_lda <- mean(pred_lda != y_test)
 error_rate_lda
 
 
+# QDA vs LDA ?
+library(biotools)  # pour le test de Box
 
+# Supposons que ta data s'appelle raisin, avec une colonne "Class"
+# On commence par vérifier la covariance par classe
 
+# Extraire les classes
+classes <- unique(raisin$Class)
+
+# Extraire les colonnes numériques uniquement
+numeric_cols <- sapply(raisin, is.numeric)
+vars_numeric <- names(raisin)[numeric_cols]
+
+# Calcul des matrices de covariance par classe sur les colonnes numériques
+cov_list <- lapply(classes, function(cl) {
+  cov(raisin[raisin$Class == cl, vars_numeric])
+})
+names(cov_list) <- classes
+
+print(cov_list)
+
+# Appliquer le test de Box uniquement sur les variables numériques
+box_test <- boxM(raisin[, vars_numeric], raisin$Class)
+print(box_test)
+
+box_test$p.value # < 0.05
+
+# Question 3
+
+# Split data into training and test sets (2/3 training, 1/3 test)
+n <- nrow(raisin)
+train <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(2/3, 1/3))
+X_train <- raisin[train, 1:7]  # All original variables
+y_train <- raisin$Class[train]
+X_test <- raisin[!train, 1:7]
+y_test <- raisin$Class[!train]
+
+# Standardize the explanatory variables
+X_train_scaled <- scale(X_train, center = TRUE, scale = TRUE)
+X_test_scaled <- scale(X_test, center = attr(X_train_scaled, "scaled:center"), 
+                       scale = attr(X_train_scaled, "scaled:scale"))
+
+# Fit LDA model on all original variables
+lda_full <- lda(X_train_scaled, grouping = y_train)
+
+# Predict on test set
+pred_lda_full <- predict(lda_full, newdata = X_test_scaled)
+y_pred_full <- pred_lda_full$class
+error_rate_full <- mean(y_pred_full != y_test)
+cat("Test error rate for LDA (full variables):", error_rate_full, "\n")
