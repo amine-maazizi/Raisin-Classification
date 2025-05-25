@@ -1,8 +1,10 @@
-library(readxl)
+library(openxlsx)
 library(FactoMineR)
+library(ggplot2)
+library(ggrepel)  # pour les labels lisibles
 
 # Charger les données
-raisin = read_excel("../dataset/Raisin.xlsx")
+raisin = read.xlsx("dataset/Raisin.xlsx", sheet = 1)
 
 # Définir l'échantillon d'apprentissage et de test
 set.seed(1)
@@ -23,7 +25,6 @@ raisin_test_proj = predict(raisin_pca, newdata = raisin_test)
 
 # Les projections sur le premier plan principal sont dans raisin_test_proj$coord[,1:2]
 raisin_test_proj$coord[,1:2]
-
 
 #QUESTION 3
 raisin$Class = factor(raisin$Class)
@@ -81,9 +82,7 @@ model_svm_poly <- svm(Class ~ ., data = raisin[train, ], kernel = "polynomial", 
 
 
 
-
-##### Question 5
-
+# Question 5
 library(pROC)
 
 # Fonction pour obtenir les probabilités prédites
@@ -110,9 +109,12 @@ prob_lasso_test <- predict(model_lasso, newx = as.matrix(raisin[test, 1:7]), typ
 prob_svm_linear_test <- attr(predict(model_svm_linear, newdata = raisin[test, ], probability = TRUE), "probabilities")[,2]
 prob_svm_poly_test <- attr(predict(model_svm_poly, newdata = raisin[test, ], probability = TRUE), "probabilities")[,2]
 
-
 # Ensure Class is a factor
 raisin$Class <- as.factor(raisin$Class)
+
+# For the complet model (training set)
+df_complet_train <- data.frame(Class = raisin[train, "Class"], prob = prob_complet_train)
+roc_complet_train <- roc(Class ~ prob, data = df_complet_train)
 
 # For the complet model (test set)
 df_complet_test <- data.frame(Class = raisin[test, "Class"], prob = prob_complet_test)
@@ -138,9 +140,6 @@ roc_svm_linear_test <- roc(Class ~ prob, data = df_svm_linear_test)
 df_svm_poly_test <- data.frame(Class = raisin[test, "Class"], prob = prob_svm_poly_test)
 roc_svm_poly_test <- roc(Class ~ prob, data = df_svm_poly_test)
 
-
-
-
 # Tracer les courbes ROC
 plot(roc_complet_train, col = "blue", main = "Courbes ROC")
 lines(roc_complet_test, col = "red")
@@ -161,7 +160,6 @@ legend("bottomright", legend = c(
   paste("SVM linéaire, AUC =", round(auc(roc_svm_linear_test), 2)),
   paste("SVM polynomial, AUC =", round(auc(roc_svm_poly_test), 2))
 ), col = c("blue", "red", "green", "purple", "orange", "brown", "pink"), lty = 1)
-
 
 ### QUESTION 6
 # Fonction pour calculer l'erreur de classification
