@@ -13,6 +13,9 @@ library(class)
 library(nnet)
 library(kableExtra)
 library(tictoc)
+library(FactoMineR)  # For PCA
+library(glmnet)     # For Lasso
+library(pROC)       # For ROC (optional, included for consistency)
 
 # Load data
 data <- read.xlsx("dataset/Raisin.xlsx", sheet = 1)
@@ -42,7 +45,7 @@ y_val <- val$Class
 X_test <- test[,-ncol(test)]
 y_test <- test$Class
 
-# Evaluation function
+# Evaluation function (updated to include training precision)
 evaluate_model <- function(pred_train, pred_val, pred_test, time_train, time_infer, y_train, y_val, y_test) {
   error <- function(y, pred) mean(y != pred)
   accuracy <- function(y, pred) mean(y == pred)
@@ -50,15 +53,122 @@ evaluate_model <- function(pred_train, pred_val, pred_test, time_train, time_inf
     `Erreur entraînement` = round(error(y_train, pred_train), 3),
     `Erreur validation` = round(error(y_val, pred_val), 3),
     `Erreur test` = round(error(y_test, pred_test), 3),
-    `Précision` = round(accuracy(y_test, pred_test), 3),
-    `Temps entraînement` = round(time_train, 3),
-    `Temps inférence` = round(time_infer, 3)
+    `Précision entraînement` = round(accuracy(y_train, pred_train), 3),
+    `Précision validation` = round(accuracy(y_val, pred_val), 3),  # ← ajout ici
+    `Précision test` = round(accuracy(y_test, pred_test), 3),
+    `Temps entraînement (ms)` = round(time_train * 1000, 1),
+    `Temps inférence (ms)` = round(time_infer * 1000, 1)
   ))
 }
 
+
 results <- list()
 
-# 1. Decision Tree
+# 1. Logistic Regression (Complete)
+tic()
+logreg_model <- glm(Class ~ ., data = train, family = binomial)
+t_train <- toc(log = TRUE)
+tic()
+logreg_pred_train <- predict(logreg_model, train, type = "response")
+logreg_pred_val <- predict(logreg_model, val, type = "response")
+logreg_pred_test <- predict(logreg_model, test, type = "response")
+logreg_pred_train <- factor(ifelse(logreg_pred_train > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+logreg_pred_val <- factor(ifelse(logreg_pred_val > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+logreg_pred_test <- factor(ifelse(logreg_pred_test > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+t_inf <- toc(log = TRUE)
+results[["Logistic Regression"]] <- evaluate_model(logreg_pred_train, logreg_pred_val, logreg_pred_test,
+                                                   t_train$toc - t_train$tic,
+                                                   t_inf$toc - t_inf$tic,
+                                                   y_train, y_val, y_test)
+
+# 2. Logistic Regression with PCA
+tic()
+pca_model <- PCA(X_train, scale.unit = TRUE, graph = FALSE)
+train_pca <- pca_model$ind$coord[, 1:2]
+val_pca <- predict(pca_model, newdata = X_val)$coord[, 1:2]
+test_pca <- predict(pca_model, newdata = X_test)$coord[, 1:2]
+train_pca_data <- data.frame(Dim.1 = train_pca[, 1], Dim.2 = train_pca[, 2], Class = y_train)
+pca_logreg_model <- glm(Class ~ Dim.1 + Dim.2, data = train_pca_data, family = binomial)
+t_train <- toc(log = TRUE)
+tic()
+val_pca_data <- data.frame(Dim.1 = val_pca[, 1], Dim.2 = val_pca[, 2])
+test_pca_data <- data.frame(Dim.1 = test_pca[, 1], Dim.2 = test_pca[, 2])
+pca_pred_train <- predict(pca_logreg_model, train_pca_data, type = "response")
+pca_pred_val <- predict(pca_logreg_model, val_pca_data, type = "response")
+pca_pred_test <- predict(pca_logreg_model, test_pca_data, type = "response")
+pca_pred_train <- factor(ifelse(pca_pred_train > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+pca_pred_val <- factor(ifelse(pca_pred_val > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+pca_pred_test <- factor(ifelse(pca_pred_test > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+t_inf <- toc(log = TRUE)
+results[["Logistic Regression PCA"]] <- evaluate_model(pca_pred_train, pca_pred_val, pca_pred_test,
+                                                       t_train$toc - t_train$tic,
+                                                       t_inf$toc - t_inf$tic,
+                                                       y_train, y_val, y_test)
+
+# 3. Logistic Regression with AIC
+tic()
+logreg_aic_model <- step(logreg_model, direction = "both", trace = FALSE)
+t_train <- toc(log = TRUE)
+tic()
+aic_pred_train <- predict(logreg_aic_model, train, type = "response")
+aic_pred_val <- predict(logreg_aic_model, val, type = "response")
+aic_pred_test <- predict(logreg_aic_model, test, type = "response")
+aic_pred_train <- factor(ifelse(aic_pred_train > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+aic_pred_val <- factor(ifelse(aic_pred_val > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+aic_pred_test <- factor(ifelse(aic_pred_test > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+t_inf <- toc(log = TRUE)
+results[["Logistic Regression AIC"]] <- evaluate_model(aic_pred_train, aic_pred_val, aic_pred_test,
+                                                       t_train$toc - t_train$tic,
+                                                       t_inf$toc - t_inf$tic,
+                                                       y_train, y_val, y_test)
+
+# 4. Lasso Logistic Regression
+tic()
+lasso_model <- cv.glmnet(as.matrix(X_train), as.numeric(y_train) - 1, family = "binomial", alpha = 1)
+lasso_fit <- glmnet(as.matrix(X_train), as.numeric(y_train) - 1, family = "binomial", alpha = 1, lambda = lasso_model$lambda.min)
+t_train <- toc(log = TRUE)
+tic()
+lasso_pred_train <- predict(lasso_fit, newx = as.matrix(X_train), type = "response")
+lasso_pred_val <- predict(lasso_fit, newx = as.matrix(X_val), type = "response")
+lasso_pred_test <- predict(lasso_fit, newx = as.matrix(X_test), type = "response")
+lasso_pred_train <- factor(ifelse(lasso_pred_train > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+lasso_pred_val <- factor(ifelse(lasso_pred_val > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+lasso_pred_test <- factor(ifelse(lasso_pred_test > 0.5, levels(y_train)[2], levels(y_train)[1]), levels = levels(y_train))
+t_inf <- toc(log = TRUE)
+results[["Lasso Logistic Regression"]] <- evaluate_model(lasso_pred_train, lasso_pred_val, lasso_pred_test,
+                                                         t_train$toc - t_train$tic,
+                                                         t_inf$toc - t_inf$tic,
+                                                         y_train, y_val, y_test)
+
+# 5. SVM Linear
+tic()
+svm_linear_model <- svm(Class ~ ., data = train, kernel = "linear", probability = TRUE)
+t_train <- toc(log = TRUE)
+tic()
+svm_linear_pred_train <- predict(svm_linear_model, train)
+svm_linear_pred_val <- predict(svm_linear_model, val)
+svm_linear_pred_test <- predict(svm_linear_model, test)
+t_inf <- toc(log = TRUE)
+results[["SVM Linear"]] <- evaluate_model(svm_linear_pred_train, svm_linear_pred_val, svm_linear_pred_test,
+                                          t_train$toc - t_train$tic,
+                                          t_inf$toc - t_inf$tic,
+                                          y_train, y_val, y_test)
+
+# 6. SVM Polynomial
+tic()
+svm_poly_model <- svm(Class ~ ., data = train, kernel = "polynomial", degree = 3, probability = TRUE)
+t_train <- toc(log = TRUE)
+tic()
+svm_poly_pred_train <- predict(svm_poly_model, train)
+svm_poly_pred_val <- predict(svm_poly_model, val)
+svm_poly_pred_test <- predict(svm_poly_model, test)
+t_inf <- toc(log = TRUE)
+results[["SVM Polynomial"]] <- evaluate_model(svm_poly_pred_train, svm_poly_pred_val, svm_poly_pred_test,
+                                              t_train$toc - t_train$tic,
+                                              t_inf$toc - t_inf$tic,
+                                              y_train, y_val, y_test)
+
+# 7. Decision Tree
 tic()
 tree_model <- rpart(Class ~ ., data = train)
 t_train <- toc(log = TRUE)
@@ -72,7 +182,7 @@ results[["Arbre de décision"]] <- evaluate_model(tree_pred_train, tree_pred_val
                                                  t_inf$toc - t_inf$tic,
                                                  y_train, y_val, y_test)
 
-# 2. Random Forest
+# 8. Random Forest
 tic()
 rf_model <- randomForest(Class ~ ., data = train)
 t_train <- toc(log = TRUE)
@@ -86,7 +196,7 @@ results[["Random Forest"]] <- evaluate_model(rf_pred_train, rf_pred_val, rf_pred
                                              t_inf$toc - t_inf$tic,
                                              y_train, y_val, y_test)
 
-# 3. Gradient Boosting (XGBoost)
+# 9. Gradient Boosting (XGBoost)
 train_x <- as.matrix(X_train)
 val_x <- as.matrix(X_val)
 test_x <- as.matrix(X_test)
@@ -113,7 +223,7 @@ results[["Gradient Boosting"]] <- evaluate_model(decode(xgb_pred_train), decode(
                                                  t_inf$toc - t_inf$tic,
                                                  y_train, y_val, y_test)
 
-# 4. Naive Bayes
+# 10. Naive Bayes
 tic()
 nb_model <- naiveBayes(Class ~ ., data = train)
 t_train <- toc(log = TRUE)
@@ -127,7 +237,7 @@ results[["Naive Bayes"]] <- evaluate_model(nb_pred_train, nb_pred_val, nb_pred_t
                                            t_inf$toc - t_inf$tic,
                                            y_train, y_val, y_test)
 
-# 5. k-NN
+# 11. k-NN
 k <- 5
 tic()
 knn_pred_train <- knn(train = X_train, test = X_train, cl = y_train, k = k)
@@ -140,7 +250,7 @@ results[["k-NN"]] <- evaluate_model(knn_pred_train, knn_pred_val, knn_pred_test,
                                     t_inf$toc - t_inf$tic,
                                     y_train, y_val, y_test)
 
-# 6. Neural Network
+# 12. Neural Network
 tic()
 nn_model <- nnet(Class ~ ., data = train, size = 5, maxit = 200, trace = FALSE)
 t_train <- toc(log = TRUE)
@@ -163,5 +273,4 @@ rownames(results_df) <- NULL
 library(knitr)
 library(kableExtra)
 kable(results_df, format = "html", digits = 3, booktabs = TRUE) %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE, position = "center") %>%
-  column_spec(1, bold = TRUE)
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE, position = "center")
